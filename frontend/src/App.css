@@ -1,59 +1,95 @@
-#app {
-    height: 100vh;
-    text-align: center;
+.app-shell {
+    min-height: 100vh;
+    background: #f5f7fb;
 }
 
-#logo {
-    display: block;
-    width: 50%;
-    height: 50%;
-    margin: auto;
-    padding: 10% 0 0;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    background-origin: content-box;
+.app-header {
+    height: auto;
+    min-height: 84px;
+    padding: 18px 28px;
+    background: #17202f;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
 }
 
-.result {
-    height: 20px;
-    line-height: 20px;
-    margin: 1.5rem auto;
+.app-title {
+    color: #ffffff !important;
+    margin: 0 !important;
 }
 
-.input-box .btn {
-    width: 60px;
-    height: 30px;
-    line-height: 30px;
-    border-radius: 3px;
-    border: none;
-    margin: 0 0 0 20px;
-    padding: 0 8px;
-    cursor: pointer;
+.app-subtitle {
+    color: rgba(255, 255, 255, 0.72);
 }
 
-.input-box .btn:hover {
-    background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
-    color: #333333;
+.app-content {
+    padding: 24px;
 }
 
-.input-box .input {
-    border: none;
-    border-radius: 3px;
-    outline: none;
-    height: 30px;
-    line-height: 30px;
-    padding: 0 10px;
-    background-color: rgba(240, 240, 240, 1);
-    -webkit-font-smoothing: antialiased;
+.panel,
+.empty-state {
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(22, 32, 47, 0.06);
 }
 
-.input-box .input:hover {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
+.panel + .panel {
+    margin-top: 16px;
 }
 
-.input-box .input:focus {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
+.full-width {
+    width: 100%;
+}
+
+.repo-card {
+    height: 100%;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(22, 32, 47, 0.06);
+}
+
+.repo-description {
+    min-height: 48px;
+}
+
+.reason {
+    margin: 8px 0 0;
+    color: #536174;
+}
+
+.report-panel {
+    max-height: calc(100vh - 170px);
+    overflow: auto;
+}
+
+.report-panel h1,
+.report-panel h2,
+.report-panel h3 {
+    margin-top: 18px;
+}
+
+.report-panel table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.report-panel th,
+.report-panel td {
+    border: 1px solid #e5e8ef;
+    padding: 8px;
+    vertical-align: top;
+}
+
+.report-panel th {
+    background: #f3f6fb;
+}
+
+@media (max-width: 768px) {
+    .app-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .app-content {
+        padding: 16px;
+    }
 }
