@@ -2,6 +2,7 @@ package domain
 
 import "time"
 
+// SearchIntent 表示从用户自然语言目标中抽取出的结构化搜索意图。
 type SearchIntent struct {
 	UserInput   string   `json:"user_input"`
 	Languages   []string `json:"languages"`
@@ -13,12 +14,14 @@ type SearchIntent struct {
 	MinStars    int      `json:"min_stars"`
 }
 
+// PlannedQuery 表示系统生成的一条 GitHub Search query 及其生成理由。
 type PlannedQuery struct {
 	Query       string `json:"query"`
 	Reason      string `json:"reason"`
 	Description string `json:"description"`
 }
 
+// Repository 保存 GitHub 仓库基础元数据和本地缓存 ID。
 type Repository struct {
 	ID              int64     `json:"id"`
 	GitHubID        int64     `json:"github_id"`
@@ -44,6 +47,7 @@ type Repository struct {
 	RawJSON         string    `json:"-"`
 }
 
+// RepoSnapshot 保存 README、目录树和依赖文件等仓库快照信息。
 type RepoSnapshot struct {
 	RepositoryID        int64     `json:"repository_id"`
 	ReadmeText          string    `json:"readme_text"`
@@ -55,6 +59,7 @@ type RepoSnapshot struct {
 	FetchedAt           time.Time `json:"fetched_at"`
 }
 
+// RepositoryProfile 表示仓库分析后的学习和贡献信号。
 type RepositoryProfile struct {
 	Repository          Repository `json:"repository"`
 	ReadmeSummary       string     `json:"readme_summary"`
@@ -69,6 +74,7 @@ type RepositoryProfile struct {
 	HelpWantedCount     int        `json:"help_wanted_count"`
 }
 
+// Score 保存仓库评分的五个维度、总分和解释信息。
 type Score struct {
 	RepositoryID                  int64             `json:"repository_id"`
 	ActivityScore                 int               `json:"activity_score"`
@@ -85,11 +91,13 @@ type Score struct {
 	ScoredAt                      time.Time         `json:"scored_at"`
 }
 
+// ScoredRepository 绑定仓库基础信息和对应评分。
 type ScoredRepository struct {
 	Repository Repository `json:"repository"`
 	Score      Score      `json:"score"`
 }
 
+// DiscoveryResult 是一次项目发现流程返回给前端和报告服务的完整结果。
 type DiscoveryResult struct {
 	Intent         SearchIntent       `json:"intent"`
 	Queries        []PlannedQuery     `json:"queries"`

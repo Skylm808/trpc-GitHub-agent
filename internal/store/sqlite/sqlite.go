@@ -1,4 +1,4 @@
-package store
+package sqlite
 
 import (
 	"context"
@@ -148,6 +148,22 @@ func (s *SQLiteStore) SaveQueryHistory(ctx context.Context, intent domain.Search
 		INSERT INTO query_history (user_input, extracted_intent_json, generated_queries_json, result_repository_ids_json, created_at)
 		VALUES (?, ?, ?, ?, ?)
 	`, intent.UserInput, string(intentJSON), string(queriesJSON), string(repoIDsJSON), time.Now().UTC())
+	return err
+}
+
+// SaveUserPreference 保存或更新长期偏好，供 Agent 记忆用户技术栈和目标。
+func (s *SQLiteStore) SaveUserPreference(ctx context.Context, key string, value any) error {
+	valueJSON, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO user_preferences (key, value_json, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET
+			value_json=excluded.value_json,
+			updated_at=excluded.updated_at
+	`, key, string(valueJSON), time.Now().UTC())
 	return err
 }
 

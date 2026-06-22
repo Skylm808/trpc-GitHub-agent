@@ -1,11 +1,17 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	researchagent "trpc-GitHub-agent/internal/agent"
+	appsvc "trpc-GitHub-agent/internal/app"
+)
 
 func TestDiscoverProjectsFallbackCoreFlow(t *testing.T) {
 	app := NewApp()
-	app.github = nil
 	app.store = nil
+	app.discovery = appsvc.NewDiscoveryService(nil, nil)
+	app.agent = researchagent.NewRunner(app.discovery, nil)
 
 	result, err := app.DiscoverProjects("我是 Go 后端，帮我找 Go Agent 项目，适合秋招和开源贡献。", 5)
 	if err != nil {

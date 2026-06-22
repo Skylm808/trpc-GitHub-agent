@@ -1,6 +1,8 @@
-package query
+package queryplanner
 
 import (
+	"unicode"
+
 	"strings"
 
 	"trpc-GitHub-agent/internal/domain"
@@ -46,7 +48,7 @@ func detectLanguages(input string) []string {
 		"rust":       "Rust",
 	}
 	for key, lang := range candidates {
-		if strings.Contains(input, key) && !contains(langs, lang) {
+		if containsTerm(input, key) && !contains(langs, lang) {
 			langs = append(langs, lang)
 		}
 	}
@@ -210,6 +212,28 @@ func contains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func containsTerm(input, term string) bool {
+	start := 0
+	for {
+		index := strings.Index(input[start:], term)
+		if index < 0 {
+			return false
+		}
+		index += start
+		beforeOK := index == 0 || !isASCIILetterOrDigit(rune(input[index-1]))
+		afterIndex := index + len(term)
+		afterOK := afterIndex >= len(input) || !isASCIILetterOrDigit(rune(input[afterIndex]))
+		if beforeOK && afterOK {
+			return true
+		}
+		start = index + len(term)
+	}
+}
+
+func isASCIILetterOrDigit(r rune) bool {
+	return r <= unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r))
 }
 
 func itoa(value int) string {
