@@ -201,4 +201,5 @@ type DiscoveryResult struct {
 	MarkdownReport string             `json:"markdown_report"`
 	UsedLiveGitHub bool               `json:"used_live_github"`
 	Warnings       []string           `json:"warnings"`
+	AgentTrace     []AgentTraceStep   `json:"agent_trace"`
 }

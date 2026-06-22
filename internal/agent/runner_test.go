@@ -50,6 +50,9 @@ func TestRunnerDiscoverProjectsUsesFrameworkPath(t *testing.T) {
 	if len(result.Queries) == 0 {
 		t.Fatal("expected generated queries")
 	}
+	if len(result.AgentTrace) == 0 {
+		t.Fatal("expected discovery agent trace")
+	}
 }
 
 func TestRunnerDiscoverProjectsWithRequestUsesFrameworkPath(t *testing.T) {
@@ -65,6 +68,15 @@ func TestRunnerDiscoverProjectsWithRequestUsesFrameworkPath(t *testing.T) {
 	}
 	if len(result.Repositories) == 0 {
 		t.Fatal("expected repositories from deterministic fallback")
+	}
+	seen := map[string]bool{}
+	for _, step := range result.AgentTrace {
+		seen[step.Tool] = true
+	}
+	for _, want := range []string{"plan_search_queries", "search_repositories", "score_repository", "generate_project_report"} {
+		if !seen[want] {
+			t.Fatalf("expected discovery trace tool %s, got %#v", want, result.AgentTrace)
+		}
 	}
 }
 

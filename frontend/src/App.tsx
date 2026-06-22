@@ -520,7 +520,7 @@ function App() {
                                     {
                                         key: 'report',
                                         label: text.reportTab,
-                                        children: <ReportPreview markdown={result?.markdown_report ?? ''} text={text}/>,
+                                        children: <ReportPreview result={result} text={text}/>,
                                     },
                                     {
                                         key: 'qa',
@@ -918,18 +918,21 @@ function QueryList({result, text}: { result: domain.DiscoveryResult | null; text
     }
     return (
         <Card title={text.queryPlanning} className="panel compact-panel">
-            <List
-                className="query-list"
-                dataSource={result.queries}
-                renderItem={(query) => (
-                    <List.Item>
-                        <Space direction="vertical" size={2} className="full-width">
-                            <Text code className="query-code">{query.query}</Text>
-                            <Text type="secondary">{query.reason}</Text>
-                        </Space>
-                    </List.Item>
-                )}
-            />
+            <Space direction="vertical" size={12} className="full-width">
+                <List
+                    className="query-list"
+                    dataSource={result.queries}
+                    renderItem={(query) => (
+                        <List.Item>
+                            <Space direction="vertical" size={2} className="full-width">
+                                <Text code className="query-code">{query.query}</Text>
+                                <Text type="secondary">{query.reason}</Text>
+                            </Space>
+                        </List.Item>
+                    )}
+                />
+                <TraceList steps={result.agent_trace || []}/>
+            </Space>
         </Card>
     );
 }
@@ -1147,14 +1150,40 @@ function EmptyAnalysisHint({text}: { text: typeof copy[Lang] }) {
     return <Card className="empty-state"><Paragraph>{text.emptyAnalysis}</Paragraph></Card>;
 }
 
-function ReportPreview({markdown, text}: { markdown: string; text: typeof copy[Lang] }) {
+function ReportPreview({result, text}: { result: domain.DiscoveryResult | null; text: typeof copy[Lang] }) {
+    const markdown = result?.markdown_report ?? '';
     if (!markdown) {
         return <Card className="empty-state"><Paragraph>{text.reportEmpty}</Paragraph></Card>;
     }
     return (
         <Card title={text.markdownReport} className="panel compact-panel report-panel" extra={<Button icon={<ExportOutlined/>} onClick={() => downloadMarkdown(markdown)}>{text.exportMd}</Button>}>
+            <TraceList steps={(result?.agent_trace || []).filter((step) => step.phase === 'Report' || step.tool === 'generate_project_report')}/>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
         </Card>
+    );
+}
+
+function TraceList({steps}: { steps: domain.AgentTraceStep[] }) {
+    if (!steps || steps.length === 0) {
+        return null;
+    }
+    return (
+        <List
+            size="small"
+            className="inline-trace-list"
+            dataSource={steps}
+            renderItem={(step) => (
+                <List.Item className="inline-trace-step">
+                    <Space direction="vertical" size={2} className="full-width">
+                        <Space wrap>
+                            <Tag color={step.phase === 'Plan' ? 'blue' : step.phase === 'Findings' ? 'green' : step.phase === 'Report' ? 'gold' : 'purple'}>{step.phase}</Tag>
+                            <Text code>{step.tool}</Text>
+                        </Space>
+                        <Text type="secondary">{step.summary}</Text>
+                    </Space>
+                </List.Item>
+            )}
+        />
     );
 }
 

@@ -113,6 +113,7 @@ func (s *DiscoveryService) DiscoverProjects(ctx context.Context, request domain.
 		Warnings:       warnings,
 	}
 	result.MarkdownReport = s.reporter.Recommendation(result)
+	result.AgentTrace = buildDiscoveryTrace(result)
 	if s.store != nil {
 		_ = s.store.SaveQueryHistory(ctx, intent, queries, repoIDs)
 		if len(scored) > 0 {
@@ -120,6 +121,20 @@ func (s *DiscoveryService) DiscoverProjects(ctx context.Context, request domain.
 		}
 	}
 	return result, nil
+}
+
+func buildDiscoveryTrace(result domain.DiscoveryResult) []domain.AgentTraceStep {
+	source := "GitHub live search"
+	if !result.UsedLiveGitHub {
+		source = "deterministic fixture fallback"
+	}
+	return []domain.AgentTraceStep{
+		{Phase: "Plan", Tool: "plan_search_queries", Summary: "从用户输入中抽取语言、方向、难度、Star 范围和最近活跃时间，生成 GitHub 查询。"},
+		{Phase: "Tool Calls", Tool: "search_repositories", Summary: "执行 " + strconv.Itoa(len(result.Queries)) + " 条 GitHub repository search query；数据来源：" + source + "。"},
+		{Phase: "Tool Calls", Tool: "score_repository", Summary: "对 " + strconv.Itoa(len(result.Repositories)) + " 个仓库执行确定性评分，LLM 不参与排序。"},
+		{Phase: "Findings", Tool: "rank_repositories", Summary: "按确定性总分生成项目分级列表，用于后续单仓研究。"},
+		{Phase: "Report", Tool: "generate_project_report", Summary: "生成 Markdown 研究报告；AI 润色仍与确定性评分分离。"},
+	}
 }
 
 func (s *DiscoveryService) searchLiveRepositories(ctx context.Context, queries []domain.PlannedQuery, limit int, warnings *[]string) ([]domain.Repository, bool) {

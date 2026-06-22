@@ -305,6 +305,22 @@
     display: none;
 }
 
+.inline-trace-list {
+    border: 1px solid #edf1f7;
+    border-radius: 8px;
+    background: #fbfdff;
+    padding: 4px 10px;
+}
+
+.inline-trace-step {
+    padding: 8px 0 !important;
+    border-block-end: 1px solid #edf1f7 !important;
+}
+
+.inline-trace-step:last-child {
+    border-block-end: none !important;
+}
+
 .report-panel {
     max-height: calc(100vh - 170px);
     overflow: auto;

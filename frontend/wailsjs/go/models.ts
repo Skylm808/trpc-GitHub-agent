@@ -487,6 +487,7 @@ export namespace domain {
 	    markdown_report: string;
 	    used_live_github: boolean;
 	    warnings: string[];
+	    agent_trace: AgentTraceStep[];
 
 	    static createFrom(source: any = {}) {
 	        return new DiscoveryResult(source);
@@ -500,6 +501,7 @@ export namespace domain {
 	        this.markdown_report = source["markdown_report"];
 	        this.used_live_github = source["used_live_github"];
 	        this.warnings = source["warnings"];
+	        this.agent_trace = this.convertValues(source["agent_trace"], AgentTraceStep);
 	    }
 
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
