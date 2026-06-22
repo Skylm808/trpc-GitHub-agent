@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestLoadSettingsStatusReadsProviderKeys(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "github-token")
@@ -23,9 +27,13 @@ func TestLoadSettingsStatusReadsProviderKeys(t *testing.T) {
 	if !status.DeterministicModeReady {
 		t.Fatal("deterministic mode should not depend on LLM keys")
 	}
+	if len(status.Providers) != 4 {
+		t.Fatalf("expected provider list, got %#v", status.Providers)
+	}
 }
 
 func TestLoadSettingsStatusDefaultsToOpenAI(t *testing.T) {
+	t.Setenv("TRPC_GITHUB_AGENT_HOME", t.TempDir())
 	t.Setenv("MODEL_PROVIDER", "")
 	t.Setenv("MODEL_NAME", "")
 	t.Setenv("OPENAI_API_KEY", "")
@@ -41,5 +49,45 @@ func TestLoadSettingsStatusDefaultsToOpenAI(t *testing.T) {
 	}
 	if !status.DeterministicModeReady {
 		t.Fatal("expected deterministic mode to remain ready")
+	}
+	if len(status.Providers) != 4 {
+		t.Fatalf("expected provider list, got %#v", status.Providers)
+	}
+}
+
+func TestCheckLLMConnectionProbesOpenAICompatibleEndpoint(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TRPC_GITHUB_AGENT_HOME", root)
+	t.Setenv("OPENAI_API_KEY", "")
+	var sawAuth bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("unexpected probe path %s", r.URL.Path)
+		}
+		sawAuth = r.Header.Get("Authorization") == "Bearer local-token"
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	_, err := SaveSettings(SettingsUpdate{
+		Config: AppConfig{
+			ModelProvider: "custom",
+			ModelName:     "relay-model",
+			Providers: []ProviderConfig{
+				{Name: "custom", Model: "relay-model", BaseURL: server.URL + "/v1", Enabled: true},
+			},
+		},
+		ProviderTokens: map[string]string{"custom": "local-token"},
+	})
+	if err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+
+	check := CheckLLMConnection("custom")
+	if !check.OK {
+		t.Fatalf("expected successful probe, got %#v", check)
+	}
+	if !sawAuth {
+		t.Fatal("expected probe to send bearer token")
 	}
 }

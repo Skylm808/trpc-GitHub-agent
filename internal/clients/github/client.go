@@ -116,6 +116,30 @@ func (c *Client) CountIssuesByLabel(ctx context.Context, fullName, label string)
 	return result.TotalCount, nil
 }
 
+func (c *Client) SearchIssues(ctx context.Context, fullName, query string, limit int) ([]IssueItem, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	endpoint := fmt.Sprintf("%s/search/issues?q=%s&per_page=%d", c.baseURL, url.QueryEscape(fmt.Sprintf("repo:%s %s", fullName, query)), limit)
+	var result issueSearchResponseWithItems
+	if err := c.getJSON(ctx, endpoint, &result); err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func (c *Client) SearchPullRequests(ctx context.Context, fullName, query string, limit int) ([]PullRequestItem, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	endpoint := fmt.Sprintf("%s/search/issues?q=%s&per_page=%d", c.baseURL, url.QueryEscape(fmt.Sprintf("repo:%s is:pr %s", fullName, query)), limit)
+	var result issueSearchResponseWithPRs
+	if err := c.getJSON(ctx, endpoint, &result); err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
 func (c *Client) getJSON(ctx context.Context, endpoint string, target any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -238,4 +262,36 @@ type treeResponse struct {
 
 type issueSearchResponse struct {
 	TotalCount int `json:"total_count"`
+}
+
+type issueSearchResponseWithItems struct {
+	TotalCount int         `json:"total_count"`
+	Items      []IssueItem `json:"items"`
+}
+
+type issueSearchResponseWithPRs struct {
+	TotalCount int              `json:"total_count"`
+	Items      []PullRequestItem `json:"items"`
+}
+
+type IssueItem struct {
+	Title     string   `json:"title"`
+	HTMLURL   string   `json:"html_url"`
+	Labels    []Label  `json:"labels"`
+	State     string   `json:"state"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type PullRequestItem struct {
+	Title     string   `json:"title"`
+	HTMLURL   string   `json:"html_url"`
+	Labels    []Label  `json:"labels"`
+	State     string   `json:"state"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type Label struct {
+	Name string `json:"name"`
 }

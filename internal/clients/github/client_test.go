@@ -64,3 +64,41 @@ func TestGitHubClientExplainsNotFoundError(t *testing.T) {
 		t.Fatalf("expected not found explanation, got %v", err)
 	}
 }
+
+func TestGitHubClientSearchIssuesAndPRs(t *testing.T) {
+	issueServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.RawQuery, "repo%3Aowner%2Frepo") {
+			t.Fatalf("expected repo-qualified query, got %s", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"total_count":1,"items":[{"title":"Add docs","html_url":"https://github.com/owner/repo/issues/1","labels":[{"name":"docs"}],"state":"open","created_at":"2026-06-01T00:00:00Z","updated_at":"2026-06-02T00:00:00Z"}]}`))
+	}))
+	defer issueServer.Close()
+
+	client := NewClient(WithBaseURL(issueServer.URL))
+	issues, err := client.SearchIssues(context.Background(), "owner/repo", "label:docs", 1)
+	if err != nil {
+		t.Fatalf("search issues: %v", err)
+	}
+	if len(issues) != 1 || issues[0].Title != "Add docs" {
+		t.Fatalf("unexpected issues: %#v", issues)
+	}
+
+	prServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.RawQuery, "is%3Apr") {
+			t.Fatalf("expected PR query, got %s", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"total_count":1,"items":[{"title":"Refactor parser","html_url":"https://github.com/owner/repo/pull/2","labels":[{"name":"refactor"}],"state":"open","created_at":"2026-06-01T00:00:00Z","updated_at":"2026-06-02T00:00:00Z"}]}`))
+	}))
+	defer prServer.Close()
+
+	prClient := NewClient(WithBaseURL(prServer.URL))
+	prs, err := prClient.SearchPullRequests(context.Background(), "owner/repo", "is:open", 1)
+	if err != nil {
+		t.Fatalf("search pull requests: %v", err)
+	}
+	if len(prs) != 1 || prs[0].Title != "Refactor parser" {
+		t.Fatalf("unexpected prs: %#v", prs)
+	}
+}

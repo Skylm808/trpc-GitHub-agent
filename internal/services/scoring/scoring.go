@@ -213,11 +213,11 @@ func difficulty(profile domain.RepositoryProfile, repo domain.Repository, intent
 func recommendation(repo domain.Repository, total int, influence, beginner, difficulty string) string {
 	switch {
 	case influence == "S" || influence == "A":
-		return fmt.Sprintf("%s has strong influence and a %d/100 score, best for source reading and resume analysis; contribution should start from carefully selected issues.", repo.FullName, total)
+		return fmt.Sprintf("%s 影响力较强，总分 %d/100，更适合源码阅读、简历分析和重点模块研究；贡献建议从范围清晰的 Issue 开始。", repo.FullName, total)
 	case beginner == "beginner-friendly":
-		return fmt.Sprintf("%s scores %d/100 and has beginner-friendly signals, making it suitable for a first contribution path.", repo.FullName, total)
+		return fmt.Sprintf("%s 总分 %d/100，并具备新手友好信号，适合作为首次开源贡献路径。", repo.FullName, total)
 	default:
-		return fmt.Sprintf("%s scores %d/100 with %s difficulty and %s influence, suitable for targeted learning if it matches your stack.", repo.FullName, total, difficulty, influence)
+		return fmt.Sprintf("%s 总分 %d/100，难度为 %s、影响力为 %s；如果与当前技术栈匹配，适合做定向学习和模块拆解。", repo.FullName, total, difficulty, influence)
 	}
 }
 

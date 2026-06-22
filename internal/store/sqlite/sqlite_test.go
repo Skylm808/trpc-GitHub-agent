@@ -96,8 +96,57 @@ func TestSQLiteStoreSavesScoreReportAndQueryHistory(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreSavesAndReadsResearchSession(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "research.db")
+	store, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+
+	analysis := domain.RepositoryAnalysis{
+		Repository:   domain.Repository{FullName: "owner/repo", Owner: "owner", Name: "repo"},
+		IssueSummary: "docs: 1, bug: 1",
+		LLMInsight: domain.LLMInsight{
+			Provider:    "custom",
+			Model:       "gpt-compatible",
+			AIGenerated: true,
+		},
+		AgentTrace: []domain.AgentTraceStep{{Phase: "Plan", Tool: "analyze_repository", Summary: "ok"}},
+	}
+	id, err := store.SaveResearchSession(context.Background(), analysis)
+	if err != nil {
+		t.Fatalf("save research session: %v", err)
+	}
+	if id == 0 {
+		t.Fatal("expected session id")
+	}
+
+	sessions, err := store.ListResearchSessions(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("list research sessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected one session, got %d", len(sessions))
+	}
+	if sessions[0].Repository != "owner/repo" || !sessions[0].AIGenerated || sessions[0].TraceStepCount != 1 {
+		t.Fatalf("unexpected session summary: %#v", sessions[0])
+	}
+
+	got, ok, err := store.GetResearchSession(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get research session: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected saved session")
+	}
+	if got.Analysis.Repository.FullName != "owner/repo" || got.Analysis.IssueSummary == "" {
+		t.Fatalf("unexpected session analysis: %#v", got.Analysis)
+	}
+}
+
 func TestAnalyzeTreeDetectsProjectSignals(t *testing.T) {
-	hasDocs, hasExamples, hasTests, hasContributing, dependencySummary, structureSummary := AnalyzeTree([]string{
+	hasDocs, hasExamples, hasTests, hasContributing, dependencyFiles, dependencySummary, structureSummary := AnalyzeTree([]string{
 		"README.md", "go.mod", "docs/index.md", "examples/basic/main.go", "internal/app/app_test.go", "CONTRIBUTING.md",
 	})
 
@@ -106,5 +155,8 @@ func TestAnalyzeTreeDetectsProjectSignals(t *testing.T) {
 	}
 	if dependencySummary == "" || structureSummary == "" {
 		t.Fatalf("expected summaries, got %q / %q", dependencySummary, structureSummary)
+	}
+	if len(dependencyFiles) != 1 || dependencyFiles[0] != "go.mod" {
+		t.Fatalf("expected dependency files, got %#v", dependencyFiles)
 	}
 }

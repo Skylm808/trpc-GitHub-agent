@@ -14,21 +14,32 @@ func NewPlanner() *Planner {
 	return &Planner{}
 }
 
-func (p *Planner) Plan(input string, limit int) (domain.SearchIntent, []domain.PlannedQuery) {
+func (p *Planner) Plan(input string, limit int, filters domain.SearchIntent) (domain.SearchIntent, []domain.PlannedQuery) {
 	normalized := strings.ToLower(input)
 	intent := domain.SearchIntent{
-		UserInput:   input,
-		Languages:   detectLanguages(normalized),
-		Topics:      detectTopics(normalized),
-		TargetRole:  detectRole(normalized),
-		Goals:       detectGoals(normalized),
-		Difficulty:  detectDifficulty(normalized),
-		ProjectSize: limit,
+		UserInput:     input,
+		InputLanguage: filters.InputLanguage,
+		Languages:     detectLanguages(normalized),
+		Topics:        detectTopics(normalized),
+		TargetRole:    detectRole(normalized),
+		Goals:         detectGoals(normalized),
+		Difficulty:    detectDifficulty(normalized),
+		Direction:     filters.Direction,
+		PushedAfter:   filters.PushedAfter,
+		ProjectSize:   limit,
+		MinStars:      filters.MinStars,
+		MaxStars:      filters.MaxStars,
 	}
 	if intent.ProjectSize <= 0 {
 		intent.ProjectSize = 10
 	}
-	intent.MinStars = minStars(intent)
+	intent = mergeFilters(intent, filters)
+	if intent.MinStars <= 0 {
+		intent.MinStars = minStars(intent)
+	}
+	if intent.MaxStars <= 0 {
+		intent.MaxStars = maxStars(intent)
+	}
 
 	queries := buildQueries(intent)
 	return intent, queries
@@ -39,7 +50,9 @@ func detectLanguages(input string) []string {
 	candidates := map[string]string{
 		"go":         "Go",
 		"golang":     "Go",
+		"后端":         "Go",
 		"python":     "Python",
+		"爬虫":         "Python",
 		"typescript": "TypeScript",
 		"ts":         "TypeScript",
 		"javascript": "JavaScript",
@@ -62,8 +75,12 @@ func detectTopics(input string) []string {
 	var topics []string
 	candidates := map[string][]string{
 		"agent":     {"agent", "ai-agent", "llm-agent"},
+		"智能体":       {"agent", "ai-agent", "llm-agent"},
+		"大模型":       {"llm-agent"},
 		"rag":       {"rag", "retrieval"},
+		"检索":        {"rag", "retrieval"},
 		"mcp":       {"mcp", "model-context-protocol"},
+		"协议":        {"mcp"},
 		"后端":        {"backend"},
 		"backend":   {"backend"},
 		"框架":        {"framework"},
@@ -125,7 +142,7 @@ func detectDifficulty(input string) string {
 	switch {
 	case strings.Contains(input, "入门"), strings.Contains(input, "新手"), strings.Contains(input, "beginner"):
 		return "beginner"
-	case strings.Contains(input, "进阶"), strings.Contains(input, "advanced"):
+	case strings.Contains(input, "进阶"), strings.Contains(input, "高阶"), strings.Contains(input, "advanced"):
 		return "advanced"
 	default:
 		return "intermediate"
@@ -147,8 +164,12 @@ func minStars(intent domain.SearchIntent) int {
 func buildQueries(intent domain.SearchIntent) []domain.PlannedQuery {
 	var queries []domain.PlannedQuery
 	language := intent.Languages[0]
-	freshness := "pushed:>2025-01-01"
-	base := "language:" + language + " stars:>" + itoa(intent.MinStars) + " " + freshness + " archived:false"
+	freshness := pushedAfterFilter(intent.PushedAfter)
+	baseParts := []string{"language:" + language, starRangeQuery(intent.MinStars, intent.MaxStars), freshness, "archived:false"}
+	if intent.Direction != "" {
+		baseParts = append(baseParts, "topic:"+intent.Direction)
+	}
+	base := strings.Join(compact(baseParts), " ")
 
 	topicGroups := [][]string{
 		filterTopics(intent.Topics, "agent", "ai-agent", "llm-agent"),
@@ -161,25 +182,93 @@ func buildQueries(intent domain.SearchIntent) []domain.PlannedQuery {
 		}
 		queries = append(queries, domain.PlannedQuery{
 			Query:       strings.Join(group, " OR ") + " " + base,
-			Reason:      "Matches " + strings.Join(group, "/") + " with active " + language + " repositories.",
-			Description: "Generated from the user's language, direction, and active-project preference.",
+			Reason:      "匹配 " + strings.Join(group, "/") + " 方向，并限制为活跃的 " + language + " 仓库。",
+			Description: "根据用户语言、技术方向和活跃项目偏好生成。",
 		})
 	}
 	if len(queries) == 0 {
 		queries = append(queries, domain.PlannedQuery{
 			Query:       strings.Join(intent.Topics, " OR ") + " " + base,
-			Reason:      "Broad fallback query for the detected project topics.",
-			Description: "Generated because no specialized topic group was detected.",
+			Reason:      "针对识别到的项目主题生成宽泛兜底查询。",
+			Description: "未识别到专门主题组时生成。",
 		})
 	}
 	if contains(intent.Goals, "contribution") {
 		queries = append(queries, domain.PlannedQuery{
-			Query:       strings.Join(intent.Topics, " OR ") + " language:" + language + " stars:>50 good-first-issues:>0 archived:false",
-			Reason:      "Finds repositories with good-first issues for contribution entry points.",
-			Description: "Generated from the user's open source contribution goal.",
+			Query:       strings.Join(intent.Topics, " OR ") + " language:" + language + " " + starRangeQuery(max(50, intent.MinStars), intent.MaxStars) + " good-first-issues:>0 archived:false",
+			Reason:      "优先寻找带 good-first issues 的仓库，方便作为开源贡献入口。",
+			Description: "根据用户的开源贡献目标生成。",
 		})
 	}
 	return dedupeQueries(queries)
+}
+
+func mergeFilters(intent domain.SearchIntent, filters domain.SearchIntent) domain.SearchIntent {
+	if len(filters.Languages) > 0 {
+		intent.Languages = filters.Languages
+	}
+	if len(filters.Topics) > 0 {
+		intent.Topics = filters.Topics
+	}
+	if filters.TargetRole != "" {
+		intent.TargetRole = filters.TargetRole
+	}
+	if filters.Difficulty != "" {
+		intent.Difficulty = filters.Difficulty
+	}
+	if filters.Direction != "" {
+		intent.Direction = filters.Direction
+	}
+	if filters.PushedAfter != "" {
+		intent.PushedAfter = filters.PushedAfter
+	}
+	if filters.MinStars > 0 {
+		intent.MinStars = filters.MinStars
+	}
+	if filters.MaxStars > 0 {
+		intent.MaxStars = filters.MaxStars
+	}
+	if filters.InputLanguage != "" {
+		intent.InputLanguage = filters.InputLanguage
+	}
+	return intent
+}
+
+func pushedAfterFilter(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "pushed:>2025-01-01"
+	}
+	return "pushed:>" + strings.TrimSpace(value)
+}
+
+func starRangeQuery(minStars, maxStars int) string {
+	if minStars <= 0 && maxStars <= 0 {
+		return "stars:>100"
+	}
+	if minStars > 0 && maxStars > 0 {
+		return "stars:" + itoa(minStars) + ".." + itoa(maxStars)
+	}
+	if minStars > 0 {
+		return "stars:>=" + itoa(minStars)
+	}
+	return "stars:<=" + itoa(maxStars)
+}
+
+func maxStars(intent domain.SearchIntent) int {
+	if contains(intent.Goals, "contribution") {
+		return 50000
+	}
+	return 100000
+}
+
+func compact(values []string) []string {
+	var out []string
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func filterTopics(topics []string, values ...string) []string {

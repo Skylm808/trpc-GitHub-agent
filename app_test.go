@@ -5,6 +5,7 @@ import (
 
 	researchagent "trpc-GitHub-agent/internal/agent"
 	appsvc "trpc-GitHub-agent/internal/app"
+	"trpc-GitHub-agent/internal/domain"
 )
 
 func TestDiscoverProjectsFallbackCoreFlow(t *testing.T) {
@@ -13,7 +14,13 @@ func TestDiscoverProjectsFallbackCoreFlow(t *testing.T) {
 	app.discovery = appsvc.NewDiscoveryService(nil, nil)
 	app.agent = researchagent.NewRunner(app.discovery, nil)
 
-	result, err := app.DiscoverProjects("我是 Go 后端，帮我找 Go Agent 项目，适合秋招和开源贡献。", 5)
+	result, err := app.DiscoverProjects(domain.SearchRequest{
+		UserInput:  "我是 Go 后端，帮我找 Go Agent 项目，适合秋招和开源贡献。",
+		Limit:      5,
+		MinStars:   100,
+		Direction:  "agent",
+		Difficulty: "beginner",
+	})
 	if err != nil {
 		t.Fatalf("discover projects: %v", err)
 	}

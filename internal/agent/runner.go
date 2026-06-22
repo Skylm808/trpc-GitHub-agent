@@ -25,6 +25,7 @@ const (
 // Runner 通过 tRPC-Agent-Go runner 执行项目研究工作流。
 type Runner struct {
 	framework trpcrunner.Runner
+	toolset   *Toolset
 }
 
 // NewRunner 创建一个确定性 Agent runner；后续可在这里切换到 LLM Agent。
@@ -36,15 +37,21 @@ func NewRunner(discovery *appsvc.DiscoveryService, store *sqlite.SQLiteStore) *R
 	}
 	return &Runner{
 		framework: trpcrunner.NewRunner(appName, agent),
+		toolset:   toolset,
 	}
 }
 
 // DiscoverProjects 通过框架 runner 执行一次项目发现，并反序列化 Agent 返回的结构化结果。
 func (r *Runner) DiscoverProjects(ctx context.Context, userInput string, limit int) (domain.DiscoveryResult, error) {
+	return r.DiscoverProjectsWithRequest(ctx, domain.SearchRequest{UserInput: userInput, Limit: limit})
+}
+
+// DiscoverProjectsWithRequest 通过框架 runner 执行一次结构化项目发现。
+func (r *Runner) DiscoverProjectsWithRequest(ctx context.Context, request domain.SearchRequest) (domain.DiscoveryResult, error) {
 	if r == nil || r.framework == nil {
 		return domain.DiscoveryResult{}, fmt.Errorf("agent runner is not configured")
 	}
-	payload, err := json.Marshal(SearchRepositoriesInput{UserInput: userInput, Limit: limit})
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return domain.DiscoveryResult{}, err
 	}
@@ -73,6 +80,94 @@ func (r *Runner) DiscoverProjects(ctx context.Context, userInput string, limit i
 		return domain.DiscoveryResult{}, fmt.Errorf("decode agent discovery result: %w", err)
 	}
 	return result, nil
+}
+
+// AnalyzeRepository 使用显式工具链执行单仓库研究流程。
+func (r *Runner) AnalyzeRepository(ctx context.Context, fullName string) (domain.RepositoryAnalysis, error) {
+	if r == nil || r.toolset == nil {
+		return domain.RepositoryAnalysis{}, fmt.Errorf("agent runner is not configured")
+	}
+	if strings.TrimSpace(fullName) == "" {
+		return domain.RepositoryAnalysis{}, fmt.Errorf("repository full_name is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	trace := []domain.AgentTraceStep{
+		{Phase: "Plan", Tool: "AnalyzeRepository", Summary: "制定只读研究流程：元数据 -> README -> 目录树 -> 依赖 -> Issue/PR -> 评分 -> 贡献计划。"},
+	}
+
+	repo, err := r.toolset.getRepositoryMetadata(ctx, RepositoryInput{FullName: fullName})
+	if err != nil {
+		return domain.RepositoryAnalysis{}, err
+	}
+	trace = append(trace, domain.AgentTraceStep{Phase: "Tool Calls", Tool: "get_repository_metadata", Summary: summarizeRepositoryMetadata(repo)})
+
+	readmeSummary, err := r.toolset.getReadme(ctx, ReadmeInput{Repository: repo})
+	if err != nil {
+		return domain.RepositoryAnalysis{}, err
+	}
+	trace = append(trace, domain.AgentTraceStep{Phase: "Tool Calls", Tool: "get_readme", Summary: readmeSummary})
+
+	tree, err := r.toolset.getTree(ctx, TreeInput{Repository: repo})
+	if err != nil {
+		return domain.RepositoryAnalysis{}, err
+	}
+	trace = append(trace, domain.AgentTraceStep{Phase: "Tool Calls", Tool: "get_tree", Summary: tree.DirectorySummary})
+	trace = append(trace, domain.AgentTraceStep{Phase: "Tool Calls", Tool: "get_dependency_files", Summary: summarizeDependencies(tree.DependencyFiles, tree.DependencySummary)})
+
+	issueSummary, err := r.toolset.classifyIssues(ctx, RepositoryInput{FullName: fullName})
+	if err != nil {
+		return domain.RepositoryAnalysis{}, err
+	}
+	trace = append(trace, domain.AgentTraceStep{Phase: "Tool Calls", Tool: "classify_issues", Summary: issueSummary})
+
+	prSummary, err := r.toolset.summarizePRs(ctx, RepositoryInput{FullName: fullName})
+	if err != nil {
+		return domain.RepositoryAnalysis{}, err
+	}
+	trace = append(trace, domain.AgentTraceStep{Phase: "Tool Calls", Tool: "summarize_prs", Summary: prSummary})
+
+	profile := domain.RepositoryProfile{
+		Repository:        repo,
+		ReadmeSummary:     readmeSummary,
+		StructureSummary:  tree.DirectorySummary,
+		DependencySummary: tree.DependencySummary,
+		HasReadme:         strings.TrimSpace(readmeSummary) != "",
+		HasDocs:           strings.Contains(strings.ToLower(tree.DirectorySummary), "docs"),
+		HasExamples:       strings.Contains(strings.ToLower(tree.DirectorySummary), "examples"),
+		HasTests:          strings.Contains(strings.ToLower(tree.DirectorySummary), "test"),
+	}
+	score, err := r.toolset.scoreRepository(ctx, ScoreRepositoryInput{Profile: profile, Intent: domain.SearchIntent{UserInput: fullName}})
+	if err != nil {
+		return domain.RepositoryAnalysis{}, err
+	}
+	trace = append(trace, domain.AgentTraceStep{Phase: "Tool Calls", Tool: "score_repository", Summary: fmt.Sprintf("确定性评分完成：%d/100，影响力 %s，难度 %s。", score.TotalScore, score.InfluenceLevel, score.Difficulty)})
+
+	analysis := domain.RepositoryAnalysis{
+		Repository:        repo,
+		Profile:           profile,
+		Positioning:       summarizeRunnerPositioning(repo),
+		Architecture:      tree.DirectorySummary,
+		LearningModules:   runnerLearningModules(profile, tree.DependencyFiles),
+		ContributionTypes: runnerContributionTypes(issueSummary, profile),
+		IssueSummary:      issueSummary,
+		PRSummary:         prSummary,
+		DocsSummary:       signalFromText(tree.DirectorySummary, "docs", "检测到 docs 目录或文档文件"),
+		ExamplesSummary:   signalFromText(tree.DirectorySummary, "examples", "检测到 examples 示例目录"),
+		TestsSummary:      signalFromText(tree.DirectorySummary, "test", "检测到测试目录或测试文件"),
+		DependencyFiles:   tree.DependencyFiles,
+		DirectorySummary:  tree.DirectorySummary,
+	}
+	plan, err := r.toolset.generateContributionPlan(ctx, ContributionPlanInput{Analysis: analysis})
+	if err != nil {
+		return domain.RepositoryAnalysis{}, err
+	}
+	analysis.ContributionPlan = plan.ContributionPlan
+	analysis.ResumeValue = plan.ResumeValue
+	analysis.AgentTrace = append(trace, domain.AgentTraceStep{Phase: "Findings", Tool: "generate_contribution_plan", Summary: "生成 7 天贡献路线和简历/面试价值总结。"})
+	return analysis, nil
 }
 
 type researchAgent struct {
@@ -149,4 +244,100 @@ func (a *researchAgent) callSearchTool(ctx context.Context, args []byte) (domain
 		return discoveryResult, nil
 	}
 	return domain.DiscoveryResult{}, fmt.Errorf("search_repositories tool is not registered")
+}
+
+func summarizeRepositoryMetadata(repo domain.Repository) string {
+	return fmt.Sprintf("%s：%s，语言 %s，stars %d，forks %d，open issues %d。",
+		repo.FullName, repo.Description, repo.Language, repo.Stars, repo.Forks, repo.OpenIssuesCount)
+}
+
+func summarizeDependencies(files []string, summary string) string {
+	if summary != "" {
+		return summary
+	}
+	if len(files) == 0 {
+		return "未识别到依赖文件。"
+	}
+	return "Dependency files: " + strings.Join(files, ", ")
+}
+
+func signalFromText(text, token, positive string) string {
+	if strings.Contains(strings.ToLower(text), token) {
+		return positive
+	}
+	return "未检测到该信号"
+}
+
+func summarizeRunnerPositioning(repo domain.Repository) string {
+	var parts []string
+	if strings.TrimSpace(repo.Language) != "" {
+		parts = append(parts, repo.Language+" 项目")
+	}
+	for _, topic := range repo.Topics {
+		if strings.TrimSpace(topic) != "" {
+			parts = append(parts, topic)
+		}
+		if len(parts) >= 4 {
+			break
+		}
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "开源项目")
+	}
+	description := strings.TrimSpace(repo.Description)
+	if description == "" {
+		description = "适合从 README、目录树、Issue 和 PR 信号继续判断贡献价值。"
+	}
+	return repo.FullName + " 定位为 " + strings.Join(parts, " / ") + "；" + description
+}
+
+func runnerLearningModules(profile domain.RepositoryProfile, dependencyFiles []string) []string {
+	modules := []string{"README / Quickstart"}
+	if profile.HasDocs {
+		modules = append(modules, "docs")
+	}
+	if profile.HasExamples {
+		modules = append(modules, "examples")
+	}
+	if profile.HasTests {
+		modules = append(modules, "tests")
+	}
+	if len(dependencyFiles) > 0 {
+		modules = append(modules, "dependency files: "+strings.Join(dependencyFiles, ", "))
+	}
+	if len(modules) == 1 {
+		modules = append(modules, "core source directories")
+	}
+	return modules
+}
+
+func runnerContributionTypes(issueSummary string, profile domain.RepositoryProfile) []string {
+	lower := strings.ToLower(issueSummary)
+	seen := map[string]bool{}
+	var result []string
+	for _, item := range []string{"docs", "bug", "feature", "test", "good-first", "infra"} {
+		if strings.Contains(lower, item) {
+			seen[item] = true
+			result = append(result, item)
+		}
+	}
+	if strings.Contains(issueSummary, "文档") && !seen["docs"] {
+		result = append(result, "docs")
+	}
+	if strings.Contains(issueSummary, "缺陷") && !seen["bug"] {
+		result = append(result, "bug")
+	}
+	if strings.Contains(issueSummary, "功能") && !seen["feature"] {
+		result = append(result, "feature")
+	}
+	if strings.Contains(issueSummary, "测试") && !seen["test"] {
+		result = append(result, "test")
+	}
+	if profile.GoodFirstIssueCount > 0 && !seen["good-first"] {
+		result = append(result, "good-first")
+	}
+	if len(result) == 0 {
+		result = append(result, "docs", "test", "good-first")
+	}
+	return result
 }

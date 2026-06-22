@@ -3,8 +3,26 @@
 import {domain} from '../models';
 import {config} from '../models';
 
-export function DiscoverProjects(arg1:string,arg2:number):Promise<domain.DiscoveryResult>;
+export function AnalyzeRepository(arg1:string):Promise<domain.RepositoryAnalysis>;
+
+export function AskRepositoryQuestion(arg1:domain.RepositoryQuestionRequest):Promise<domain.RepositoryQuestionResponse>;
+
+export function DiscoverProjects(arg1:domain.SearchRequest):Promise<domain.DiscoveryResult>;
+
+export function GetResearchSession(arg1:number):Promise<domain.ResearchSession>;
+
+export function ListResearchSessions(arg1:number):Promise<Array<domain.ResearchSession>>;
+
+export function SaveSettings(arg1:config.SettingsUpdate):Promise<config.SettingsBundle>;
+
+export function Settings():Promise<config.SettingsBundle>;
 
 export function SettingsStatus():Promise<config.SettingsStatus>;
 
 export function StorePath():Promise<string>;
+
+export function TestGitHubConnection():Promise<config.ConnectionCheck>;
+
+export function TestLLMConnection(arg1:string):Promise<config.ConnectionCheck>;
+
+export function TestLLMConnectionDraft(arg1:config.ProviderConnectionRequest):Promise<config.ConnectionCheck>;

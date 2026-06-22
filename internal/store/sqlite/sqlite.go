@@ -151,6 +151,73 @@ func (s *SQLiteStore) SaveQueryHistory(ctx context.Context, intent domain.Search
 	return err
 }
 
+// SaveResearchSession 保存一次单仓库研究 Agent 的完整分析快照，便于前端回看。
+func (s *SQLiteStore) SaveResearchSession(ctx context.Context, analysis domain.RepositoryAnalysis) (int64, error) {
+	if strings.TrimSpace(analysis.Repository.FullName) == "" {
+		return 0, fmt.Errorf("research session repository is required")
+	}
+	body, err := json.Marshal(analysis)
+	if err != nil {
+		return 0, err
+	}
+	title := analysis.Repository.FullName + " research report"
+	provider := analysis.LLMInsight.Provider
+	model := analysis.LLMInsight.Model
+	aiGenerated := analysis.LLMInsight.AIGenerated
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO research_sessions (
+			repository_full_name, title, analysis_json, provider, model, ai_generated, trace_step_count, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, analysis.Repository.FullName, title, string(body), provider, model, aiGenerated, len(analysis.AgentTrace), time.Now().UTC())
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+// ListResearchSessions 返回最近的研究会话摘要，默认最多 20 条。
+func (s *SQLiteStore) ListResearchSessions(ctx context.Context, limit int) ([]domain.ResearchSession, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, repository_full_name, title, analysis_json, provider, model, ai_generated, trace_step_count, created_at
+		FROM research_sessions
+		ORDER BY created_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sessions []domain.ResearchSession
+	for rows.Next() {
+		session, err := scanResearchSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, rows.Err()
+}
+
+// GetResearchSession 读取一个历史研究会话。
+func (s *SQLiteStore) GetResearchSession(ctx context.Context, id int64) (domain.ResearchSession, bool, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, repository_full_name, title, analysis_json, provider, model, ai_generated, trace_step_count, created_at
+		FROM research_sessions
+		WHERE id = ?
+	`, id)
+	session, err := scanResearchSession(row)
+	if err == sql.ErrNoRows {
+		return domain.ResearchSession{}, false, nil
+	}
+	if err != nil {
+		return domain.ResearchSession{}, false, err
+	}
+	return session, true, nil
+}
+
 // SaveUserPreference 保存或更新长期偏好，供 Agent 记忆用户技术栈和目标。
 func (s *SQLiteStore) SaveUserPreference(ctx context.Context, key string, value any) error {
 	valueJSON, err := json.Marshal(value)
@@ -193,7 +260,23 @@ func scanRepository(row rowScanner) (domain.Repository, error) {
 	return repo, nil
 }
 
-func AnalyzeTree(paths []string) (hasDocs, hasExamples, hasTests, hasContributing bool, dependencySummary, structureSummary string) {
+func scanResearchSession(row rowScanner) (domain.ResearchSession, error) {
+	var session domain.ResearchSession
+	var analysisJSON string
+	err := row.Scan(&session.ID, &session.Repository, &session.Title, &analysisJSON, &session.Provider,
+		&session.Model, &session.AIGenerated, &session.TraceStepCount, &session.CreatedAt)
+	if err != nil {
+		return domain.ResearchSession{}, err
+	}
+	if strings.TrimSpace(analysisJSON) != "" {
+		if err := json.Unmarshal([]byte(analysisJSON), &session.Analysis); err != nil {
+			return domain.ResearchSession{}, err
+		}
+	}
+	return session, nil
+}
+
+func AnalyzeTree(paths []string) (hasDocs, hasExamples, hasTests, hasContributing bool, dependencyFiles []string, dependencySummary, structureSummary string) {
 	var deps []string
 	for _, path := range paths {
 		lower := strings.ToLower(path)
@@ -211,6 +294,7 @@ func AnalyzeTree(paths []string) (hasDocs, hasExamples, hasTests, hasContributin
 		}
 	}
 	if len(deps) > 0 {
+		dependencyFiles = append(dependencyFiles, deps...)
 		dependencySummary = "Dependency files: " + strings.Join(deps, ", ")
 	}
 	if len(paths) > 0 {
@@ -336,6 +420,18 @@ CREATE TABLE IF NOT EXISTS query_history (
 	extracted_intent_json TEXT,
 	generated_queries_json TEXT,
 	result_repository_ids_json TEXT,
+	created_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS research_sessions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	repository_full_name TEXT NOT NULL,
+	title TEXT NOT NULL,
+	analysis_json TEXT NOT NULL,
+	provider TEXT,
+	model TEXT,
+	ai_generated BOOLEAN NOT NULL DEFAULT FALSE,
+	trace_step_count INTEGER NOT NULL DEFAULT 0,
 	created_at TIMESTAMP
 );
 `
