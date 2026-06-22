@@ -168,10 +168,14 @@ func (a *App) AskRepositoryQuestion(request domain.RepositoryQuestionRequest) (d
 		BaseURL:  runtimeProvider.Provider.BaseURL,
 		Token:    runtimeProvider.Token,
 	}
-	answer, err := client.Chat(ctx, []llmchat.Message{
-		{Role: "system", Content: "你是 GitHub 开源贡献研究 Agent。只根据给定仓库上下文回答，保持中文，区分确定性评分和 AI 生成建议，不要建议任何 GitHub 写操作。"},
-		{Role: "user", Content: repositoryQuestionPrompt(analysis, request.Question)},
-	})
+	messages := []llmchat.Message{
+		{Role: "system", Content: "你是 GitHub 开源贡献研究 Agent。只根据给定仓库上下文和历史问答回答，保持中文，区分确定性评分和 AI 生成建议，不要建议任何 GitHub 写操作。"},
+		{Role: "user", Content: repositoryQuestionContextPrompt(analysis)},
+		{Role: "assistant", Content: "已读取仓库研究上下文。后续回答会基于该上下文、历史问答和当前问题。"},
+	}
+	messages = append(messages, repositoryHistoryMessages(request.History)...)
+	messages = append(messages, llmchat.Message{Role: "user", Content: "当前问题：" + request.Question + "\n\n请输出：结论、理由、建议下一步。"})
+	answer, err := client.Chat(ctx, messages)
 	if err != nil {
 		return domain.RepositoryQuestionResponse{}, err
 	}
@@ -192,6 +196,10 @@ func (a *App) refreshServices() {
 }
 
 func repositoryQuestionPrompt(analysis domain.RepositoryAnalysis, question string) string {
+	return repositoryQuestionContextPrompt(analysis) + "\n\n用户问题：" + question + "\n\n请输出：结论、理由、建议下一步。"
+}
+
+func repositoryQuestionContextPrompt(analysis domain.RepositoryAnalysis) string {
 	return "仓库：" + analysis.Repository.FullName + "\n" +
 		"描述：" + analysis.Repository.Description + "\n" +
 		"项目定位：" + analysis.Positioning + "\n" +
@@ -203,9 +211,26 @@ func repositoryQuestionPrompt(analysis domain.RepositoryAnalysis, question strin
 		"依赖文件：" + strings.Join(analysis.DependencyFiles, ", ") + "\n" +
 		"Issue 分类：" + analysis.IssueSummary + "\n" +
 		"PR 风险：" + analysis.PRSummary + "\n" +
-		"贡献计划：" + analysis.ContributionPlan + "\n\n" +
-		"用户问题：" + question + "\n\n" +
-		"请输出：结论、理由、建议下一步。"
+		"贡献计划：" + analysis.ContributionPlan
+}
+
+func repositoryHistoryMessages(history []domain.RepositoryQuestionTurn) []llmchat.Message {
+	if len(history) > 6 {
+		history = history[len(history)-6:]
+	}
+	messages := make([]llmchat.Message, 0, len(history)*2)
+	for _, turn := range history {
+		question := strings.TrimSpace(turn.Question)
+		answer := strings.TrimSpace(turn.Answer)
+		if question == "" || answer == "" {
+			continue
+		}
+		messages = append(messages,
+			llmchat.Message{Role: "user", Content: "历史问题：" + question},
+			llmchat.Message{Role: "assistant", Content: answer},
+		)
+	}
+	return messages
 }
 
 func (a *App) enhanceRepositoryAnalysis(ctx context.Context, analysis domain.RepositoryAnalysis) domain.RepositoryAnalysis {

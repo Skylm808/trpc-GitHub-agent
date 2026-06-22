@@ -294,7 +294,7 @@ function App() {
     const [result, setResult] = useState<domain.DiscoveryResult | null>(null);
     const [analysis, setAnalysis] = useState<domain.RepositoryAnalysis | null>(null);
     const [sessions, setSessions] = useState<domain.ResearchSession[]>([]);
-    const [qaAnswer, setQaAnswer] = useState<domain.RepositoryQuestionResponse | null>(null);
+    const [qaTurns, setQaTurns] = useState<domain.RepositoryQuestionTurn[]>([]);
     const [bundle, setBundle] = useState<config.SettingsBundle | null>(null);
     const [loading, setLoading] = useState(false);
     const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -387,7 +387,7 @@ function App() {
 
     async function loadAnalysis(fullName: string) {
         setAnalysisLoading(true);
-        setQaAnswer(null);
+        setQaTurns([]);
         try {
             const response = await AnalyzeRepository(fullName);
             setAnalysis(domain.RepositoryAnalysis.createFrom(response));
@@ -410,7 +410,7 @@ function App() {
 
     async function openResearchSession(id: number) {
         setAnalysisLoading(true);
-        setQaAnswer(null);
+        setQaTurns([]);
         setError('');
         try {
             const response = await GetResearchSession(id);
@@ -433,8 +433,13 @@ function App() {
             const response = await AskRepositoryQuestion(domain.RepositoryQuestionRequest.createFrom({
                 full_name: selectedRepo,
                 question: question.trim(),
+                history: qaTurns,
             }));
-            setQaAnswer(domain.RepositoryQuestionResponse.createFrom(response));
+            const answer = domain.RepositoryQuestionResponse.createFrom(response);
+            setQaTurns((turns) => [...turns, domain.RepositoryQuestionTurn.createFrom({
+                question: answer.question,
+                answer: answer.answer,
+            })]);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
@@ -520,7 +525,7 @@ function App() {
                                     {
                                         key: 'qa',
                                         label: '研究问答',
-                                        children: <RepositoryQA selectedRepo={selectedRepo} answer={qaAnswer} loading={qaLoading} onAsk={askRepositoryQuestion}/>,
+                                        children: <RepositoryQA selectedRepo={selectedRepo} turns={qaTurns} loading={qaLoading} onAsk={askRepositoryQuestion}/>,
                                     },
                                     {
                                         key: 'sessions',
@@ -1153,9 +1158,9 @@ function ReportPreview({markdown, text}: { markdown: string; text: typeof copy[L
     );
 }
 
-function RepositoryQA({selectedRepo, answer, loading, onAsk}: {
+function RepositoryQA({selectedRepo, turns, loading, onAsk}: {
     selectedRepo: string;
-    answer: domain.RepositoryQuestionResponse | null;
+    turns: domain.RepositoryQuestionTurn[];
     loading: boolean;
     onAsk: (question: string) => void;
 }) {
@@ -1167,24 +1172,47 @@ function RepositoryQA({selectedRepo, answer, loading, onAsk}: {
         <Card title="研究 Agent 问答" className="panel compact-panel">
             <Space direction="vertical" size={12} className="full-width">
                 <Alert type="info" showIcon message="AI generated：此区域调用当前 LLM provider，只用于解释、总结和建议；不参与确定性排序。"/>
+                {turns.length > 0 ? (
+                    <List
+                        className="qa-thread"
+                        dataSource={turns}
+                        renderItem={(turn, index) => (
+                            <List.Item className="qa-turn">
+                                <Space direction="vertical" size={8} className="full-width">
+                                    <Space wrap>
+                                        <Tag color="blue">Q{index + 1}</Tag>
+                                        <Text strong>{turn.question}</Text>
+                                    </Space>
+                                    <div className="qa-answer">
+                                        <Tag color="gold">AI generated</Tag>
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{turn.answer}</ReactMarkdown>
+                                    </div>
+                                </Space>
+                            </List.Item>
+                        )}
+                    />
+                ) : null}
                 <Input.TextArea
                     rows={4}
                     value={question}
                     onChange={(event) => setQuestion(event.target.value)}
                     placeholder="例如：我应该先看哪个目录？哪些 issue 适合新手？怎么写第一版 PR？"
                 />
-                <Button type="primary" loading={loading} onClick={() => onAsk(question)} block>
+                <Button
+                    type="primary"
+                    loading={loading}
+                    onClick={() => {
+                        const nextQuestion = question.trim();
+                        if (!nextQuestion) {
+                            return;
+                        }
+                        onAsk(nextQuestion);
+                        setQuestion('');
+                    }}
+                    block
+                >
                     向 Agent 提问
                 </Button>
-                {answer ? (
-                    <Card size="small" className="provider-card" title={`${answer.provider} / ${answer.model}`}>
-                        <Space direction="vertical" size={8} className="full-width">
-                            <Tag color={answer.ai_generated ? 'gold' : 'default'}>{answer.ai_generated ? 'AI generated' : 'deterministic'}</Tag>
-                            <Text strong>{answer.question}</Text>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer.answer}</ReactMarkdown>
-                        </Space>
-                    </Card>
-                ) : null}
             </Space>
         </Card>
     );

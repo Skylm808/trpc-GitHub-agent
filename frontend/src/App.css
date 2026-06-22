@@ -404,6 +404,34 @@
     margin-inline-start: 12px;
 }
 
+.qa-thread .ant-list-items {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.qa-turn {
+    border: 1px solid #dfe7f1 !important;
+    border-radius: 8px;
+    padding: 10px 12px !important;
+    background: #fbfdff;
+}
+
+.qa-answer {
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #edf1f7;
+}
+
+.qa-answer .ant-tag {
+    margin-bottom: 6px;
+}
+
+.qa-answer p:last-child {
+    margin-bottom: 0;
+}
+
 .empty-state {
     padding: 18px;
     color: var(--text-secondary);

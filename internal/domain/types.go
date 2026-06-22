@@ -149,8 +149,15 @@ type AgentTraceStep struct {
 
 // RepositoryQuestionRequest 表示单仓库研究问答请求。
 type RepositoryQuestionRequest struct {
-	FullName string `json:"full_name"`
+	FullName string                   `json:"full_name"`
+	Question string                   `json:"question"`
+	History  []RepositoryQuestionTurn `json:"history"`
+}
+
+// RepositoryQuestionTurn 表示一次历史问答，用于多轮上下文。
+type RepositoryQuestionTurn struct {
 	Question string `json:"question"`
+	Answer   string `json:"answer"`
 }
 
 // RepositoryQuestionResponse 表示 LLM 生成的单仓库研究问答结果。
