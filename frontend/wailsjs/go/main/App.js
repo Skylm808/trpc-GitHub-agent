@@ -6,6 +6,10 @@ export function DiscoverProjects(arg1, arg2) {
   return window['go']['main']['App']['DiscoverProjects'](arg1, arg2);
 }
 
+export function SettingsStatus() {
+  return window['go']['main']['App']['SettingsStatus']();
+}
+
 export function StorePath() {
   return window['go']['main']['App']['StorePath']();
 }

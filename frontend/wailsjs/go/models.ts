@@ -1,3 +1,34 @@
+export namespace config {
+	
+	export class SettingsStatus {
+	    github_token_configured: boolean;
+	    model_provider: string;
+	    model_name: string;
+	    openai_configured: boolean;
+	    anthropic_configured: boolean;
+	    deepseek_configured: boolean;
+	    active_provider_ready: boolean;
+	    deterministic_mode_ready: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SettingsStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.github_token_configured = source["github_token_configured"];
+	        this.model_provider = source["model_provider"];
+	        this.model_name = source["model_name"];
+	        this.openai_configured = source["openai_configured"];
+	        this.anthropic_configured = source["anthropic_configured"];
+	        this.deepseek_configured = source["deepseek_configured"];
+	        this.active_provider_ready = source["active_provider_ready"];
+	        this.deterministic_mode_ready = source["deterministic_mode_ready"];
+	    }
+	}
+
+}
+
 export namespace domain {
 	
 	export class Score {

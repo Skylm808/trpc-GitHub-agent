@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"trpc-GitHub-agent/internal/config"
 	"trpc-GitHub-agent/internal/domain"
 	gh "trpc-GitHub-agent/internal/github"
 	"trpc-GitHub-agent/internal/query"
@@ -115,6 +116,10 @@ func (a *App) DiscoverProjects(userInput string, limit int) (domain.DiscoveryRes
 
 func (a *App) StorePath() string {
 	return a.storePath
+}
+
+func (a *App) SettingsStatus() config.SettingsStatus {
+	return config.LoadSettingsStatus()
 }
 
 func (a *App) searchLiveRepositories(queries []domain.PlannedQuery, limit int, warnings *[]string) ([]domain.Repository, bool) {
