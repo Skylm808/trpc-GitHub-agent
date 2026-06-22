@@ -41,6 +41,11 @@ type ProviderConnectionRequest struct {
 	Enabled  bool   `json:"enabled"`
 }
 
+type GitHubConnectionRequest struct {
+	BaseURL string `json:"base_url"`
+	Token   string `json:"token"`
+}
+
 type RuntimeProvider struct {
 	Provider ProviderConfig
 	Token    string
@@ -121,6 +126,21 @@ func CheckGitHubConnection() ConnectionCheck {
 	return ConnectionCheck{Target: "github", OK: true, Message: "GitHub base URL 与 token 已配置"}
 }
 
+func CheckGitHubConnectionRequest(request GitHubConnectionRequest) ConnectionCheck {
+	baseURL := strings.TrimRight(strings.TrimSpace(request.BaseURL), "/")
+	if baseURL == "" {
+		return ConnectionCheck{Target: "github", OK: false, Message: "GitHub API base URL 未配置"}
+	}
+	token := strings.TrimSpace(request.Token)
+	if token == "" {
+		token = ResolvedGitHubToken()
+	}
+	if token == "" {
+		return ConnectionCheck{Target: "github", OK: false, Message: "GitHub token 未配置，公共 API 仍可用但会很快限流"}
+	}
+	return ConnectionCheck{Target: "github", OK: true, Message: "GitHub base URL 与 token 已配置，当前检测使用表单中的 base URL"}
+}
+
 func CheckLLMConnection(providerName string) ConnectionCheck {
 	cfg, _, _ := loadAppConfig()
 	secrets, _, _ := loadSecretConfig()
@@ -154,7 +174,12 @@ func CheckLLMConnectionRequest(request ProviderConnectionRequest) ConnectionChec
 	if strings.TrimSpace(request.BaseURL) == "" {
 		return ConnectionCheck{Target: providerName, OK: false, Message: "Base URL 未配置"}
 	}
-	if strings.TrimSpace(request.Token) == "" {
+	token := strings.TrimSpace(request.Token)
+	if token == "" {
+		secrets, _, _ := loadSecretConfig()
+		token = strings.TrimSpace(resolvedProviderToken(providerName, secrets))
+	}
+	if token == "" {
 		return ConnectionCheck{Target: providerName, OK: false, Message: "API token 未配置"}
 	}
 	provider := ProviderConfig{
@@ -166,7 +191,7 @@ func CheckLLMConnectionRequest(request ProviderConnectionRequest) ConnectionChec
 	if provider.Model == "" {
 		provider.Model = defaultModel(providerName)
 	}
-	return probeProvider(provider, strings.TrimSpace(request.Token))
+	return probeProvider(provider, token)
 }
 
 func ActiveRuntimeProvider() (RuntimeProvider, bool) {

@@ -91,3 +91,62 @@ func TestCheckLLMConnectionProbesOpenAICompatibleEndpoint(t *testing.T) {
 		t.Fatal("expected probe to send bearer token")
 	}
 }
+
+func TestCheckLLMConnectionRequestUsesSavedTokenWhenDraftTokenEmpty(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TRPC_GITHUB_AGENT_HOME", root)
+	t.Setenv("OPENAI_API_KEY", "")
+	var sawAuth bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAuth = r.Header.Get("Authorization") == "Bearer saved-token"
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	_, err := SaveSettings(SettingsUpdate{
+		Config: AppConfig{
+			ModelProvider: "custom",
+			Providers: []ProviderConfig{
+				{Name: "custom", Model: "relay-model", BaseURL: "https://saved.example.com/v1", Enabled: true},
+			},
+		},
+		ProviderTokens: map[string]string{"custom": "saved-token"},
+	})
+	if err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+
+	check := CheckLLMConnectionRequest(ProviderConnectionRequest{
+		Provider: "custom",
+		Model:    "relay-model",
+		BaseURL:  server.URL,
+		Enabled:  true,
+	})
+	if !check.OK {
+		t.Fatalf("expected draft probe to use saved token, got %#v", check)
+	}
+	if !sawAuth {
+		t.Fatal("expected saved bearer token")
+	}
+}
+
+func TestCheckGitHubConnectionRequestUsesDraftBaseURLAndSavedToken(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TRPC_GITHUB_AGENT_HOME", root)
+	t.Setenv("GITHUB_TOKEN", "")
+	_, err := SaveSettings(SettingsUpdate{
+		Config:      AppConfig{GitHubBaseURL: "https://saved.example.com"},
+		GitHubToken: "saved-github-token",
+	})
+	if err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+
+	check := CheckGitHubConnectionRequest(GitHubConnectionRequest{BaseURL: "https://draft.example.com"})
+	if !check.OK {
+		t.Fatalf("expected draft GitHub check to use saved token, got %#v", check)
+	}
+	if check.Target != "github" {
+		t.Fatalf("unexpected target %q", check.Target)
+	}
+}

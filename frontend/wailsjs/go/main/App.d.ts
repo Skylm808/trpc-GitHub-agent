@@ -23,6 +23,8 @@ export function StorePath():Promise<string>;
 
 export function TestGitHubConnection():Promise<config.ConnectionCheck>;
 
+export function TestGitHubConnectionDraft(arg1:config.GitHubConnectionRequest):Promise<config.ConnectionCheck>;
+
 export function TestLLMConnection(arg1:string):Promise<config.ConnectionCheck>;
 
 export function TestLLMConnectionDraft(arg1:config.ProviderConnectionRequest):Promise<config.ConnectionCheck>;

@@ -138,6 +138,11 @@ func (a *App) TestGitHubConnection() config.ConnectionCheck {
 	return config.CheckGitHubConnection()
 }
 
+// TestGitHubConnectionDraft 使用前端当前表单值检测 GitHub 配置，不保存到本地配置。
+func (a *App) TestGitHubConnectionDraft(request config.GitHubConnectionRequest) config.ConnectionCheck {
+	return config.CheckGitHubConnectionRequest(request)
+}
+
 // TestLLMConnection 检查指定 LLM provider 的 base URL、启用状态和 token 配置。
 func (a *App) TestLLMConnection(provider string) config.ConnectionCheck {
 	return config.CheckLLMConnection(provider)

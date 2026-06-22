@@ -48,8 +48,7 @@ import {
     ListResearchSessions,
     SaveSettings,
     Settings,
-    TestGitHubConnection,
-    TestLLMConnection,
+    TestGitHubConnectionDraft,
     TestLLMConnectionDraft,
 } from '../wailsjs/go/main/App';
 import {config, domain} from '../wailsjs/go/models';
@@ -346,23 +345,24 @@ function App() {
     }
 
     async function testGitHub() {
-        const response = await TestGitHubConnection();
+        const values = settingsForm.getFieldsValue();
+        const response = await TestGitHubConnectionDraft(config.GitHubConnectionRequest.createFrom({
+            base_url: values.githubBaseURL || 'https://api.github.com',
+            token: values.githubToken || '',
+        }));
         const check = config.ConnectionCheck.createFrom(response);
         (check.ok ? message.success : message.warning)(check.message);
     }
 
     async function testProvider(provider: ProviderKey) {
         const values = settingsForm.getFieldsValue();
-        const draftToken = values[`${provider}Token`];
-        const response = draftToken
-            ? await TestLLMConnectionDraft({
-                provider,
-                model: values[`${provider}Model`] || providerDefaults[provider].model,
-                base_url: values[`${provider}BaseURL`] || providerDefaults[provider].baseURL,
-                token: draftToken,
-                enabled: Boolean(values[`${provider}Enabled`]),
-            })
-            : await TestLLMConnection(provider);
+        const response = await TestLLMConnectionDraft(config.ProviderConnectionRequest.createFrom({
+            provider,
+            model: values[`${provider}Model`] || providerDefaults[provider].model,
+            base_url: values[`${provider}BaseURL`] || providerDefaults[provider].baseURL,
+            token: values[`${provider}Token`] || '',
+            enabled: Boolean(values[`${provider}Enabled`]),
+        }));
         const check = config.ConnectionCheck.createFrom(response);
         (check.ok ? message.success : message.warning)(`${providerLabels[provider]}: ${check.message}`);
     }

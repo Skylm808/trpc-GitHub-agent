@@ -42,6 +42,10 @@ export function TestGitHubConnection() {
   return window['go']['main']['App']['TestGitHubConnection']();
 }
 
+export function TestGitHubConnectionDraft(arg1) {
+  return window['go']['main']['App']['TestGitHubConnectionDraft'](arg1);
+}
+
 export function TestLLMConnection(arg1) {
   return window['go']['main']['App']['TestLLMConnection'](arg1);
 }
